@@ -1,0 +1,29 @@
+<?php
+/**
+ * @file
+ * Feeds Upload installation
+ */
+
+/**
+ * Implements hook_install().
+ */
+function feed_multi_importer_install() {
+  // Set default variables.
+
+  // Get localization function for installation as t() may be unavailable.
+  $t = get_t();
+
+  // Give user feedback.
+  drupal_set_message($t('Feed Multi Importer variables created.'));
+}
+
+/**
+ * Implements hook_uninstall().
+ */
+function feed_multi_importer_uninstall() {
+  // Delete variables.
+
+  // Inform the user of the removal.
+  $t = get_t();
+  drupal_set_message($t('Feed Multi Importer variables removed.'));
+}

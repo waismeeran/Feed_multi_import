@@ -1,0 +1,297 @@
+<?php
+/**
+    *@file
+    *custom functionality for feeds import
+    *Developed by Wais Meeran
+    *contact: waismeeran@gmail.com / +93-788387185
+    *version 1.3
+*/
+/**
+  * Implements hook_help().
+*/
+function feed_multi_importer_help($path, $arg) {
+  switch($path) {
+    case 'admin/help#feed_multi_importer':{
+      $ret_val = '<h3>'. t('About').'</h3>';
+      $ret_val = '<p>'. t('The module is designed and developed for users who have multiple feed importer (for any reasons) for its one content type due to this user must import one file(CSV) several times in order to accomplish the bulk upload. So, this module eliminates the needs for importing one content type multiple times. The module is designed in such a manner which is dynamic, flexible and easy to use. Note: set memory_limit to 256 in PHP.ini. This setting also affects file upload. To upload large files, this value must be larger than upload_max_filesize ').'</p>';
+      return $ret_val;
+    break;
+    }
+  }
+}
+/**
+ * Implements hook_permission().
+ */
+function feed_multi_importer_permission() {
+  return array(
+    'Manage Feed Multi Importer' => array(
+      'title' => t('Manage Feed Multi Importer'),
+      'description' => t('Perform administrative tasks on Feed Multi Importer functionality'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function feed_multi_importer_menu() {
+  $items = array();
+
+  // Admin configuration group.
+  $items['admin/config/feed_multi_importer'] = array(
+    'title' => 'Feed Multi Importer',
+    'description' => 'Manage Feed Multi Importer',
+    'access arguments' => array('Manage Feed Multi Importer'),
+  );
+
+  // Admin configuration - Settings.
+  $items['admin/config/feed_multi_importer/manage'] = array(
+    'title' => 'Feed Multi Importer settings',
+    'description' => 'Manage Feed Multi Importer settings and configurations.',
+    'access arguments' => array('Manage Feed Multi Importer'),
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('feed_multi_importer_admin_settings_form'), 
+    //'page arguments' => array('daily_hours_form'), test_form
+  );
+
+//'feed_multi_importer_admin_settings_form',
+  return $items;
+}
+/**
+* Custom function
+* list all Feed Multi Importers
+**/
+function list_feeds() {
+
+  $i=0;
+  if ($importers = feeds_importer_load_all()) {
+    foreach ($importers as $importer) {
+      if ($importer->disabled) {
+        continue;
+      }
+      if (!(user_access('import ' . $importer->id . ' feeds') || user_access('administer feeds'))) {
+        continue;
+      }
+      if (empty($importer->config['content_type'])) {
+        $options[$i] = $importer->config['name'];
+        $id[$i] = $importer->id;
+        $i++;
+      }
+      elseif (node_access('create', $importer->config['content_type'])) {
+        $link = 'node/add/' . str_replace('_', '-', $importer->config['content_type']);
+        $title = node_type_get_name($importer->config['content_type']);
+      }
+      else {
+        continue;
+      }
+    }
+  }
+    return array($options,$id);
+}
+
+/**
+ * Implements hook_form().
+ */
+
+function feed_multi_importer_admin_settings_form($form, &$form_state) {
+
+ //List all the events in category of event form 
+$opt=list_feeds()[0];
+//  
+  $form['UploadProcess'] = array(
+    '#type' => 'fieldset',
+    '#tree' => TRUE,
+    '#prefix' => '<div id="UploadProcess">',
+    '#suffix' => '</div>',
+    '#description' => t('Feed Multi Importer'),
+  );
+
+  // Add a flag to add on additional UploadProcess if the user clicks "Add cimsFeeds"
+   $form_state['storage']['add_more'] = FALSE;
+  if (isset($form_state['triggering_element']) && $form_state['triggering_element']['#value'] == 'Add more') {
+    $form_state['storage']['add_more'] = TRUE;
+  }
+
+
+  $form_state['storage']['cimsFeeds_init'] = isset($form_state['storage']['cimsFeeds_init']) ? $form_state['storage']['cimsFeeds_init'] : TRUE;
+    // First time through, grab the values from the DB
+  if ($form_state['storage']['cimsFeeds_init']) {
+   $cimsFeeds_array = variable_get('UploadProcess');
+    $form_state['storage']['cimsFeeds_init'] = FALSE;
+  // On subsequent renderings, grab the values from the values array
+  } else {
+    // get current values from form_state
+    $cimsFeeds_array = $form_state['values']['UploadProcess'];
+    // remove the Add cimsFeeds button from this array
+    array_pop($cimsFeeds_array);
+    $num_cimsFeeds = count($cimsFeeds_array);
+  }
+
+  // Get all the stored closed cimsFeedss and remove the user-selected index
+  if (isset($form_state['triggering_element']) && $form_state['triggering_element']['#value'] == 'Remove') {
+    // retrieve the index of the one we need to remove
+    // preg_match required to get around Drupal bug related to multiple
+    // submit buttons with the same name
+    preg_match('/\d+/', $form_state['triggering_element']['#name'], $remove_cimsFeeds);
+    // Preg_match return array ($remove_cimsFeeds) Array ([0] =>1)
+    $remove_cimsFeeds = $remove_cimsFeeds[0];
+    unset($cimsFeeds_array[$remove_cimsFeeds]);
+    // reorder the array, so we have expected 0 through (count-1) indices
+    $cimsFeeds_array = array_values($cimsFeeds_array);
+
+    // Update the form values that will be submitted
+    unset($form_state['input']['UploadProcess'][$remove_cimsFeeds]);
+    $form_state['input']['UploadProcess'] = array_values($form_state['input']['UploadProcess']);
+    // or re-rendered to the form
+    unset($form_state['complete form']['UploadProcess'][$remove_cimsFeeds]);
+    unset($form_state['values']['UploadProcess'][$remove_cimsFeeds]);
+  }
+
+
+  $num_cimsFeeds = count($cimsFeeds_array);
+
+ // Add all the current feeds upload values
+  for ($i = 0; $i < $num_cimsFeeds; $i++) {
+    if (isset($cimsFeeds_array[$i])) {
+      $current_date_val = $cimsFeeds_array[$i];
+    }
+ $form['UploadProcess'][$i]['feed_multi_importer'] = array(
+        '#title' => t('Feed Multi Importer'),
+        '#description' => t('Select your base Feed Multi Importer'),
+        '#type' => 'select',
+        '#options' => $opt,
+        '#default_value' =>  $current_date_val['feed_multi_importer'],
+        '#prefix' => '<div id="cimsFeeds-' . $i . '">',
+        '#suffix' => '</div>',
+        //'#required' => TRUE,
+      );
+     $form['UploadProcess'][$i]['feed_multi_importer_events'] = array(
+          '#title' => t('Feed Multi Importer events'),
+          '#description' => t('Select the Feed Multi Importer which uses the same template except the base Feed Multi Importer which is selected in above (feeds upload) input'),
+          '#type' => 'select',
+          '#multiple' => TRUE,
+          '#options' => $opt,
+          '#size' => 5,
+          '#default_value' => $current_date_val['feed_multi_importer_events'],
+          '#attributes' => array('class'=>array("feed_multi_importer_events")),
+          '#prefix' => '<div id="cimsFeeds-' . $i . '">',
+          '#suffix' => '</div>',
+          //'#required' => TRUE,
+      );
+      if ($i!=0) {    
+// Add a remove button for each one
+    $form['UploadProcess'][$i]['remove'] = array(
+      '#type' => 'button',
+      '#value' => t('Remove'),
+      '#name' => "removehol-$i", // need to create unique names, regardless of tree structure
+      '#ajax' => array(
+        'callback' => 'add_remove_ajax_callback',
+        'wrapper' => 'UploadProcess'
+      ),
+    );
+  }
+  }
+
+ // Check if user clicked "Add cimsFeeds"
+  if ($form_state['storage']['add_more']) {
+    // index for this one is at the end of the stored values
+    $index = count($cimsFeeds_array);
+    // Add a remove button for e
+    $form['UploadProcess'][$index]['feed_multi_importer'] = array(
+        '#title' => t('Feed Multi Importer'),
+        '#description' => t('Select your base Feed Multi Importer'),
+        '#type' => 'select',
+        '#options' => $opt,
+        '#default_value' =>  array(),
+        '#prefix' => '<div id="cimsFeeds-' . $index . '">',
+        '#suffix' => '</div>',
+        //'#required' => TRUE,
+      );
+    $form['UploadProcess'][$index]['feed_multi_importer_events'] = array(
+          '#title' => t('Feed Multi Importer events'),
+          '#description' => t('Select the Feed Multi Importer which uses the same template except the base Feed Multi Importer which is selected in above (feeds upload) input'),
+          '#type' => 'select',
+          '#multiple' => TRUE,
+          '#options' => $opt,
+          '#size' => 5,
+          '#default_value' => array(),
+          '#attributes' => array('class'=>array("feed_multi_importer_events")),
+          '#prefix' => '<div id="cimsFeeds-' . $index . '">',
+          '#suffix' => '</div>',
+          //'#required' => TRUE,
+      );
+   if ($index!=0) {
+    $form['UploadProcess'][$index]['remove'] = array(
+      '#type' => 'button',
+      '#value' => t('Remove'),
+      '#name' => "removehol-$index", // need to create unique names, regardless of tree structure
+      '#ajax' => array(
+        'callback' => 'add_remove_ajax_callback',
+        'wrapper' => 'UploadProcess',
+      ),
+    );
+  }
+  }
+
+  $form['UploadProcess']['add_more'] = array(
+    '#type' => 'button',
+    '#value' => t('Add more'),
+    '#name' => t('add-more'),
+    '#ajax' => array(
+      'callback' => 'add_remove_ajax_callback',
+      'wrapper' => 'UploadProcess'
+    ),
+  );
+
+return system_settings_form($form);
+
+}
+
+function add_remove_ajax_callback($form, &$form_state) {
+  return $form['UploadProcess'];
+}
+
+
+/**
+  * Implements hook_feeds_after_import().
+**/
+function feed_multi_importer_feeds_after_import(FeedsSource $source) {
+$opt=list_feeds()[1];
+$arr1=variable_get('UploadProcess');
+$size=count($arr1);
+  if (SUB==0 || SUB==NULL) 
+  {
+    //Loop to fetch the feed_multi_importer_events of the specific feeds upload
+    for ($i=0; $i<$size; $i++)
+    {
+        $base=$opt[$arr1[$i]['feed_multi_importer']];
+        if($source->id == $base) 
+        {
+          $feedBase=$base;
+          $num=count($arr1[$i]['feed_multi_importer_events']);
+          $feedEvent=$arr1[$i]['feed_multi_importer_events'];
+          break;
+        } else 
+        {
+          $num=-1;
+        }
+    
+    }
+    //Const value cannot be changed during the script
+    define(SUB, $num);
+  }
+  if ($source->id ==$feedBase && SUB>0) 
+  {
+      $fetcher_config = $source->getConfigFor($source->importer->fetcher);
+      $file=$fetcher_config['source'];
+      $config = $source->configForm($form_state);
+      $config = array('FeedsFileFetcher'=>array('source'=>$file)); 
+         foreach($feedEvent as $key=>$row) 
+         {
+            $myFeed = feeds_source($opt[$row]);
+            $myFeed->addConfig($config);  
+            while (FEEDS_BATCH_COMPLETE != $myFeed->import());
+    
+         }
+  }
+}

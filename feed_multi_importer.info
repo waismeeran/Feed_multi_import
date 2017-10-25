@@ -1,0 +1,6 @@
+name = Feed Multi Importer
+description = The module is designed and developed for users who have multiple feed importer (for any reasons) for its one content type due to this user must import one file(CSV) several times in order to accomplish the bulk upload.
+core = 7.x
+version = 1.3
+configure = admin/config/feed_multi_importer/manage
+dependencies[] = feeds
